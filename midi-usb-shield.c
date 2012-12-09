@@ -20,6 +20,7 @@
 
 int16_t received;
 uint8_t command, channel, data1, data2;
+MIDI_EventPacket_t ReceivedMIDIEvent;
 
 /** LUFA MIDI Class driver interface configuration and state information. This structure is
  *  passed to all MIDI Class driver functions, so that multiple instances of the same class
@@ -50,7 +51,6 @@ void USB_MIDI_Send_Command(unsigned char channel, unsigned char command, unsigne
 	MIDI_EventPacket_t MIDIEvent = (MIDI_EventPacket_t)
 		{
 			.Event       = MIDI_EVENT(0, command),
-
 			.Data1       = command | channel,
 			.Data2       = data2,
 			.Data3       = data3,
@@ -136,13 +136,54 @@ int main(void)
 			MIDI_LED_OFF();
 		}
 
-
-		MIDI_EventPacket_t ReceivedMIDIEvent;
-		while (MIDI_Device_ReceiveEventPacket(&MIDI_Interface, &ReceivedMIDIEvent))
+		if (MIDI_Device_ReceiveEventPacket(&MIDI_Interface, &ReceivedMIDIEvent))
 		{
-
+			MIDI_LED_ON();
+			command = (uint8_t)ReceivedMIDIEvent.Data1 & 0xF0;
+			channel = (uint8_t)ReceivedMIDIEvent.Data1 & 0x0F;
+			switch(command){
+				// 1 BYTE COMMANDS
+				case 0xC0: //ProgramChange
+				case 0xD0: //AfterTouchChannel
+					Serial_SendByte	(ReceivedMIDIEvent.Data1);
+					Serial_SendByte	(ReceivedMIDIEvent.Data2);
+					break;
+				// 2 BYTE COMMANDS
+				case 0x80: //NoteOff
+				case 0x90: //NoteOn
+				case 0xA0: //AfterTouchPoly
+				case 0xB0: //ControlChange
+				case 0xE0: //PitchBend
+					Serial_SendByte	(ReceivedMIDIEvent.Data1);
+					Serial_SendByte	(ReceivedMIDIEvent.Data2);
+					Serial_SendByte	(ReceivedMIDIEvent.Data3);
+					break;
+				//SYSTEM
+				case 0xF0:
+					if ( channel==0 ){
+						//Sysex
+						//TODO
+					}else if ( channel >= 6 ){
+						//Tune Request
+						//End of Exclusive
+						//System Real Time
+						Serial_SendByte	(ReceivedMIDIEvent.Data1);
+					}else if ( channel==1 || channel==3 ){
+						//MIDI Time Code Quarter Frame
+						//Song Select
+						while( !Serial_IsCharReceived() );
+						Serial_SendByte	(ReceivedMIDIEvent.Data1);
+						Serial_SendByte	(ReceivedMIDIEvent.Data2);
+					}else if ( channel==2 ){
+						//Song Position Pointer
+						Serial_SendByte	(ReceivedMIDIEvent.Data1);
+						Serial_SendByte	(ReceivedMIDIEvent.Data2);
+						Serial_SendByte	(ReceivedMIDIEvent.Data3);
+					}
+					break;
+			}
+			MIDI_LED_OFF();
 		}
-
 
 		MIDI_Device_USBTask(&MIDI_Interface);
 		USB_USBTask();
