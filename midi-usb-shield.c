@@ -18,6 +18,9 @@
 
 #include "midi-usb-shield.h"
 
+int16_t received;
+uint8_t command, channel, data1, data2;
+
 /** LUFA MIDI Class driver interface configuration and state information. This structure is
  *  passed to all MIDI Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
@@ -42,31 +45,104 @@ USB_ClassInfo_MIDI_Device_t MIDI_Interface =
 			},
 	};
 
+void USB_MIDI_Send_Command(unsigned char channel, unsigned char command, unsigned char data2, unsigned char data3){
+
+	MIDI_EventPacket_t MIDIEvent = (MIDI_EventPacket_t)
+		{
+			.Event       = MIDI_EVENT(0, command),
+
+			.Data1       = command | channel,
+			.Data2       = data2,
+			.Data3       = data3,
+		};
+
+	MIDI_Device_SendEventPacket(&MIDI_Interface, &MIDIEvent);
+	MIDI_Device_Flush(&MIDI_Interface);
+
+}
 
 /** Main program entry point. This routine contains the overall program flow, including initial
  *  setup of all components and the main program loop.
  */
+
 int main(void)
 {
 	SetupHardware();
 
-	//LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
 	sei();
 
 	for (;;)
 	{
+		wdt_reset();
+
+		/* RECEIVE FROM UART AND SEND TO USB */
+		if (Serial_IsCharReceived()){
+
+			MIDI_LED_ON();
+
+			received = Serial_ReceiveByte();
+			command = (uint8_t)received & 0xF0;
+			channel = (uint8_t)received & 0x0F;
+
+			switch(command){
+
+			// 1 BYTE COMMANDS
+			case 0xC0: //ProgramChange
+			case 0xD0: //AfterTouchChannel
+				while( !Serial_IsCharReceived() );
+				data1 = (uint8_t)Serial_ReceiveByte();
+				USB_MIDI_Send_Command(channel, command, data1, 0);
+				break;
+
+			// 2 BYTE COMMANDS
+			case 0x80: //NoteOff
+			case 0x90: //NoteOn
+			case 0xA0: //AfterTouchPoly
+			case 0xB0: //ControlChange
+			case 0xE0: //PitchBend
+				while( !Serial_IsCharReceived() );
+				data1 = (uint8_t)Serial_ReceiveByte();
+				while( !Serial_IsCharReceived() );
+				data2 = (uint8_t)Serial_ReceiveByte();
+				USB_MIDI_Send_Command(channel, command, data1, data2);
+				break;
+
+			//SYSTEM
+			case 0xF0:
+				if ( channel==0 ){
+					//Sysex
+					//TODO
+				}else if ( channel >= 6 ){
+					//Tune Request
+					//End of Exclusive
+					//System Real Time
+					USB_MIDI_Send_Command(channel, command, 0, 0);
+				}else if ( channel==1 || channel==3 ){
+					//MIDI Time Code Quarter Frame
+					//Song Select
+					while( !Serial_IsCharReceived() );
+					data1 = (uint8_t)Serial_ReceiveByte();
+					USB_MIDI_Send_Command(channel, command, data1, 0);
+				}else if ( channel==2 ){
+					//Song Position Pointer
+					while( !Serial_IsCharReceived() );
+					data1 = (uint8_t)Serial_ReceiveByte();
+					while( !Serial_IsCharReceived() );
+					data2 = (uint8_t)Serial_ReceiveByte();
+					USB_MIDI_Send_Command(channel, command, data1, data2);
+				}
+				break;
+			}
+			MIDI_LED_OFF();
+		}
+
 
 		MIDI_EventPacket_t ReceivedMIDIEvent;
 		while (MIDI_Device_ReceiveEventPacket(&MIDI_Interface, &ReceivedMIDIEvent))
 		{
-			/*
-			if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_ON)) && (ReceivedMIDIEvent.Data3 > 0))
-			  //LEDs_SetAllLEDs(ReceivedMIDIEvent.Data2 > 64 ? LEDS_LED1 : LEDS_LED2);
-			else
-			  //LEDs_SetAllLEDs(LEDS_NO_LEDS);
-			   *
-			   */
+
 		}
+
 
 		MIDI_Device_USBTask(&MIDI_Interface);
 		USB_USBTask();
@@ -76,12 +152,18 @@ int main(void)
 /** Configures the board hardware and chip peripherals for the demo's functionality. */
 void SetupHardware(void)
 {
-	/* Disable watchdog if enabled by bootloader/fuses */
-	MCUSR &= ~(1 << WDRF);
-	wdt_disable();
+	/* Set high watchdog in order to LUFA to do the job */
+	wdt_enable(WDTO_4S);
 
 	/* Disable clock division */
 	clock_prescale_set(clock_div_1);
+
+	/* LEDs */
+	DDRC |= (1<<6); //PC6 MIDI
+	DDRC |= (1<<7); //PC7 USB
+
+	MIDI_LED_OFF();
+	USB_LED_OFF();
 
 	/* Hardware Initialization */
 	USB_Init();
@@ -94,23 +176,21 @@ void SetupHardware(void)
 /** Event handler for the library USB Connection event. */
 void EVENT_USB_Device_Connect(void)
 {
-	//LEDs_SetAllLEDs(LEDMASK_USB_ENUMERATING);
+	USB_LED_ON();
 }
 
 /** Event handler for the library USB Disconnection event. */
 void EVENT_USB_Device_Disconnect(void)
 {
-	//LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
+	USB_LED_OFF();
 }
 
 /** Event handler for the library USB Configuration Changed event. */
 void EVENT_USB_Device_ConfigurationChanged(void)
 {
 	bool ConfigSuccess = true;
-
 	ConfigSuccess &= MIDI_Device_ConfigureEndpoints(&MIDI_Interface);
 
-	//LEDs_SetAllLEDs(ConfigSuccess ? LEDMASK_USB_READY : LEDMASK_USB_ERROR);
 }
 
 /** Event handler for the library USB Control Request reception event. */

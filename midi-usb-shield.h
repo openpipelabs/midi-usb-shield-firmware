@@ -22,5 +22,12 @@
 		void EVENT_USB_Device_ConfigurationChanged(void);
 		void EVENT_USB_Device_ControlRequest(void);
 
+		/* LEDs */
+		#define MIDI_LED_ON()       (PORTC |= (1<<6))
+		#define MIDI_LED_OFF()      (PORTC &= ~(1<<6))
+		#define USB_LED_ON()        (PORTC |= (1<<7))
+		#define USB_LED_OFF()       (PORTC &= ~(1<<7))
+
+
 #endif
 
