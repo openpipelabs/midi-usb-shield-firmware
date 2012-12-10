@@ -21,6 +21,7 @@
 int16_t received;
 uint8_t command, channel, data1, data2;
 MIDI_EventPacket_t ReceivedMIDIEvent;
+int status;
 
 /** LUFA MIDI Class driver interface configuration and state information. This structure is
  *  passed to all MIDI Class driver functions, so that multiple instances of the same class
@@ -67,6 +68,8 @@ void USB_MIDI_Send_Command(unsigned char channel, unsigned char command, unsigne
 
 int main(void)
 {
+	int tmp,rs;
+
 	SetupHardware();
 
 	sei();
@@ -80,7 +83,19 @@ int main(void)
 
 			MIDI_LED_ON();
 
-			received = Serial_ReceiveByte();
+			tmp = Serial_ReceiveByte();
+			if (tmp<0x80){
+				//RUNNING STATUS
+				// http://www.blitter.com/~russtopia/MIDI/~jglatt/tech/midispec/run.htm
+				received=status;
+				rs=1;
+
+			}else{
+				received=tmp;
+				status=received;
+				rs=0;
+			}
+			//received = Serial_ReceiveByte();
 			command = (uint8_t)received & 0xF0;
 			channel = (uint8_t)received & 0x0F;
 
@@ -89,8 +104,12 @@ int main(void)
 			// 1 BYTE COMMANDS
 			case 0xC0: //ProgramChange
 			case 0xD0: //AfterTouchChannel
-				while( !Serial_IsCharReceived() );
-				data1 = (uint8_t)Serial_ReceiveByte();
+				if (rs){
+					data1=tmp;
+				}else{
+					while( !Serial_IsCharReceived() );
+					data1 = (uint8_t)Serial_ReceiveByte();
+				}
 				USB_MIDI_Send_Command(channel, command, data1, 0);
 				break;
 
@@ -100,8 +119,12 @@ int main(void)
 			case 0xA0: //AfterTouchPoly
 			case 0xB0: //ControlChange
 			case 0xE0: //PitchBend
-				while( !Serial_IsCharReceived() );
-				data1 = (uint8_t)Serial_ReceiveByte();
+				if (rs){
+					data1=tmp;
+				}else{
+					while( !Serial_IsCharReceived() );
+					data1 = (uint8_t)Serial_ReceiveByte();
+				}
 				while( !Serial_IsCharReceived() );
 				data2 = (uint8_t)Serial_ReceiveByte();
 				USB_MIDI_Send_Command(channel, command, data1, data2);
@@ -132,6 +155,10 @@ int main(void)
 					USB_MIDI_Send_Command(channel, command, data1, data2);
 				}
 				break;
+			default:
+				USB_MIDI_Send_Command(0, 0x80, received, 0);
+				USB_MIDI_Send_Command(0, 0x80, data1, 0);
+				USB_MIDI_Send_Command(0, 0x80, data2, 0);
 			}
 			MIDI_LED_OFF();
 		}
