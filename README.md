@@ -11,4 +11,5 @@ Build instructions
 Firmware Update
 ---------------
 Enter DFU mode powering the shield while HWB jumper is ON
+
     sudo make dfu
