@@ -18,8 +18,8 @@
 
 #include "midi-usb-shield.h"
 
- #define MIDI_BAUDRATE 31250
- //#define MIDI_BAUDRATE 115200
+ //#define MIDI_BAUDRATE 31250
+ #define MIDI_BAUDRATE 115200
 
 
 int16_t received;
@@ -241,7 +241,7 @@ void SetupHardware(void)
 	USB_Init();
 
     // Initialize the serial USART driver before first use, with 9600 baud (and no double-speed mode)
-    Serial_Init(31250, false);
+    Serial_Init(MIDI_BAUDRATE, false);
 
 }
 
