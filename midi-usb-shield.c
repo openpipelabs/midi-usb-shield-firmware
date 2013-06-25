@@ -18,6 +18,10 @@
 
 #include "midi-usb-shield.h"
 
+ #define MIDI_BAUDRATE 31250
+ //#define MIDI_BAUDRATE 115200
+
+
 int16_t received;
 uint8_t command, channel, data1, data2;
 MIDI_EventPacket_t ReceivedMIDIEvent;
